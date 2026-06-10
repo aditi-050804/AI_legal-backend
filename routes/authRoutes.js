@@ -757,8 +757,18 @@ router.get("/microsoft", (req, res) => {
 });
 
 router.get("/apple", (req, res) => {
+  const userAgent = req.headers['user-agent'] || 'Unknown';
+  const isIOS = /iPhone|iPad/.test(userAgent);
+  const isMac = /Macintosh/.test(userAgent);
+  const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
+  
+  console.log(`[APPLE SIGNIN] GET /apple initiated from ${platform}`);
+  console.log(`[APPLE SIGNIN] User-Agent: ${userAgent}`);
+  console.log(`[APPLE SIGNIN] Query params:`, req.query);
+  
   const clientId = process.env.APPLE_CLIENT_ID;
   if (!clientId || !process.env.APPLE_TEAM_ID || !process.env.APPLE_KEY_ID || !process.env.APPLE_PRIVATE_KEY) {
+    console.log(`[APPLE SIGNIN] Missing credentials - falling back to dev template`);
     // Fallback to simulation template if credentials are missing
     return res.send(devLoginTemplate('Apple', req.query.email));
   }
@@ -767,30 +777,51 @@ router.get("/apple", (req, res) => {
   const scope = 'name email';
   const state = crypto.randomBytes(16).toString('hex');
 
-  const authorizationUrl = appleSignin.getAuthorizationUrl({
-    clientID: clientId,
-    redirectUri: redirectUri,
-    scope: scope,
-    state: state,
-    responseMode: 'form_post', // Apple requires form_post for name/email
-  });
+  console.log(`[APPLE SIGNIN] Generating Apple OAuth URL with redirectUri: ${redirectUri}`);
 
-  res.redirect(authorizationUrl);
+  try {
+    const authorizationUrl = appleSignin.getAuthorizationUrl({
+      clientID: clientId,
+      redirectUri: redirectUri,
+      scope: scope,
+      state: state,
+      responseMode: 'form_post', // Apple requires form_post for name/email
+    });
+
+    console.log(`[APPLE SIGNIN] Redirecting to Apple OAuth: ${authorizationUrl.substring(0, 100)}...`);
+    res.redirect(authorizationUrl);
+  } catch (err) {
+    console.error(`[APPLE SIGNIN] Error generating auth URL:`, err.message);
+    res.status(500).json({ 
+      error: 'Failed to generate Apple authorization URL',
+      details: err.message,
+      platform: platform
+    });
+  }
 });
 
 router.post("/apple/callback", async (req, res) => {
-  console.log(`[DEBUG Apple Callback Body]:`, JSON.stringify(req.body));
+  const userAgent = req.headers['user-agent'] || 'Unknown';
+  const isIOS = /iPhone|iPad/.test(userAgent);
+  const isMac = /Macintosh/.test(userAgent);
+  const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
+  
+  console.log(`[APPLE SIGNIN] Platform: ${platform}, User-Agent: ${userAgent}`);
+  console.log(`[APPLE SIGNIN] Callback received from ${platform}`);
+  console.log(`[APPLE SIGNIN] Request Body:`, JSON.stringify(req.body));
+  console.log(`[APPLE SIGNIN] Request Headers (Content-Type):`, req.headers['content-type']);
+  
   const { code, id_token: bodyIdToken, user: userJson, state } = req.body;
 
   try {
-    console.log(`[DEBUG Apple] Apple Callback started. Code: ${code ? 'Present' : 'Missing'}, ID Token: ${bodyIdToken ? 'Present' : 'Missing'}`);
+    console.log(`[APPLE SIGNIN] Parsing: Code=${code ? '✓' : '✗'}, ID Token=${bodyIdToken ? '✓' : '✗'}, User=${userJson ? '✓' : '✗'}`);
 
     const clientId = process.env.APPLE_CLIENT_ID;
     const teamId = process.env.APPLE_TEAM_ID;
     const keyId = process.env.APPLE_KEY_ID;
     let privateKey = process.env.APPLE_PRIVATE_KEY;
     
-    console.log(`[DEBUG Apple] Env Vars - ClientID: ${clientId}, TeamID: ${teamId}, KeyID: ${keyId}, PrivateKey: ${privateKey ? 'Present (' + privateKey.length + ' chars)' : 'Missing'}`);
+    console.log(`[APPLE SIGNIN] Environment - ClientID: ${clientId ? '✓' : '✗'}, TeamID: ${teamId ? '✓' : '✗'}, KeyID: ${keyId ? '✓' : '✗'}, PrivateKey: ${privateKey ? '✓ (' + privateKey.length + ' chars)' : '✗'}`);
 
     // EXPLICIT CHECK FOR VARIABLES
     if (!clientId) throw new Error("APPLE_CLIENT_ID is missing from server env");
@@ -803,7 +834,7 @@ router.post("/apple/callback", async (req, res) => {
       try {
         const filePath = path.resolve(process.cwd(), privateKey);
         privateKey = fs.readFileSync(filePath, 'utf8');
-        console.log(`[DEBUG Apple] Loaded private key from file: ${filePath}`);
+          console.log(`[APPLE SIGNIN] Loaded private key from file: ${filePath}`);
       } catch (err) {
         throw new Error(`Failed to read key file at ${privateKey}: ${err.message}`);
       }
@@ -831,7 +862,7 @@ router.post("/apple/callback", async (req, res) => {
       formattedKey += '-----END PRIVATE KEY-----';
       privateKey = formattedKey;
     } else {
-      console.error(`[DEBUG Apple] Invalid key prefix: ${privateKey.substring(0, 30)}...`);
+      console.error(`[APPLE SIGNIN] Invalid key prefix: ${privateKey.substring(0, 30)}...`);
       throw new Error("APPLE_PRIVATE_KEY format is invalid (missing BEGIN header). Ensure the .p8 file exists or content is correct.");
     }
 
@@ -839,7 +870,7 @@ router.post("/apple/callback", async (req, res) => {
 
     // 1. If we have a code, exchange it for tokens (this is the standard web flow)
     if (code) {
-      console.log(`[DEBUG Apple] Attempting code exchange...`);
+      console.log(`[APPLE SIGNIN] Attempting code exchange...`);
       try {
         const clientSecret = appleSignin.getClientSecret({
           clientID: clientId,
@@ -848,7 +879,7 @@ router.post("/apple/callback", async (req, res) => {
           privateKey: privateKey,
         });
         
-        console.log(`[DEBUG Apple] Client Secret generated successfully.`);
+        console.log(`[APPLE SIGNIN] Client Secret generated successfully.`);
 
         const tokenResponse = await appleSignin.getAuthorizationToken(code, {
           clientID: clientId,
@@ -856,13 +887,13 @@ router.post("/apple/callback", async (req, res) => {
           redirectUri: `${process.env.BACKEND_URL || 'http://localhost:8080'}/api/auth/apple/callback`,
         });
 
-        console.log(`[DEBUG Apple] Token Exchange successful. ID Token present: ${!!tokenResponse.id_token}`);
+        console.log(`[APPLE SIGNIN] Token Exchange successful. ID Token present: ${!!tokenResponse.id_token}`);
 
         if (tokenResponse.id_token) {
           finalIdToken = tokenResponse.id_token;
         }
       } catch (clientErr) {
-        console.error(`[Apple Client Secret/Exchange Error]:`, clientErr.message);
+        console.error(`[APPLE SIGNIN] Code Exchange Error:`, clientErr.message);
         throw new Error(`Failed to exchange Apple code: ${clientErr.message}`);
       }
     }
@@ -898,9 +929,20 @@ router.post("/apple/callback", async (req, res) => {
     return handleSocialUser(profile, req, res);
 
   } catch (err) {
-    console.error(`[Apple Auth Overall Error]:`, err.message);
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const isIOS = /iPhone|iPad/.test(userAgent);
+    const isMac = /Macintosh/.test(userAgent);
+    const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
+    
+    console.error(`[APPLE SIGNIN ERROR] Platform: ${platform}`);
+    console.error(`[APPLE SIGNIN ERROR] Message:`, err.message);
+    console.error(`[APPLE SIGNIN ERROR] Stack:`, err.stack);
+    
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent("Apple login failed: " + err.message)}`);
+    const errorMsg = `Apple login failed on ${platform}: ${err.message}`;
+    console.log(`[APPLE SIGNIN] Redirecting to: ${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
+    
+    return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}&platform=${platform}`);
   }
 });
 

@@ -140,6 +140,21 @@ const serveAppleVerification = (req, res) => {
 app.get('/.well-known/apple-developer-merchantid-domain-association.txt', serveAppleVerification);
 app.get('/.well-known/apple-developer-merchantid-domain-association', serveAppleVerification);
 
+// ─── Apple App Site Association (Sign In with Apple & WebCredentials) ────────
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  const filePath = path.join(__dirname, 'public', '.well-known', 'apple-app-site-association');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/json');
+    res.sendFile(filePath);
+  } else {
+    // Return minimal valid JSON if file not found
+    res.json({
+      applinks: { apps: [], details: [] },
+      webcredentials: { apps: ["3MWP4W4XQV.com.aisa24.login"] }
+    });
+  }
+});
+
 
 // API Health Check (moved from root)
 app.get("/api/health", (req, res) => {
