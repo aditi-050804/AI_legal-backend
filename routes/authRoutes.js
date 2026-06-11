@@ -25,7 +25,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 router.get("/proxy-avatar", async (req, res) => {
   const { email, name } = req.query;
   if (!email) return res.redirect("/User.jpeg");
-  
+
   const normalizedEmail = email.trim().toLowerCase();
   const initials = name ? name.trim().split(/\s+/).map(n => n[0]).join('').toUpperCase().slice(0, 2) : normalizedEmail.slice(0, 2).toUpperCase();
   const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(initials || "U")}&background=random&color=fff&size=256`;
@@ -42,7 +42,7 @@ router.get("/proxy-avatar", async (req, res) => {
       // Check if source exists with a quick HEAD request
       const head = await axios.head(source, { timeout: 2000 });
       if (head.status === 200) return res.redirect(source);
-    } catch (e) {}
+    } catch (e) { }
   }
 
   return res.redirect(fallback);
@@ -296,7 +296,7 @@ const handleSocialUser = async (profile, req, res, isRedirect = true) => {
               });
               user.avatar = gcsRes.publicUrl;
             } catch (e) {
-              user.avatar = picture; 
+              user.avatar = picture;
             }
           } else {
             user.avatar = picture;
@@ -761,11 +761,11 @@ router.get("/apple", (req, res) => {
   const isIOS = /iPhone|iPad/.test(userAgent);
   const isMac = /Macintosh/.test(userAgent);
   const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
-  
+
   console.log(`[APPLE SIGNIN] GET /apple initiated from ${platform}`);
   console.log(`[APPLE SIGNIN] User-Agent: ${userAgent}`);
   console.log(`[APPLE SIGNIN] Query params:`, req.query);
-  
+
   const clientId = process.env.APPLE_CLIENT_ID;
   if (!clientId || !process.env.APPLE_TEAM_ID || !process.env.APPLE_KEY_ID || !process.env.APPLE_PRIVATE_KEY) {
     console.log(`[APPLE SIGNIN] Missing credentials - falling back to dev template`);
@@ -792,7 +792,7 @@ router.get("/apple", (req, res) => {
     res.redirect(authorizationUrl);
   } catch (err) {
     console.error(`[APPLE SIGNIN] Error generating auth URL:`, err.message);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to generate Apple authorization URL',
       details: err.message,
       platform: platform
@@ -805,12 +805,12 @@ router.post("/apple/callback", async (req, res) => {
   const isIOS = /iPhone|iPad/.test(userAgent);
   const isMac = /Macintosh/.test(userAgent);
   const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
-  
+
   console.log(`[APPLE SIGNIN] Platform: ${platform}, User-Agent: ${userAgent}`);
   console.log(`[APPLE SIGNIN] Callback received from ${platform}`);
   console.log(`[APPLE SIGNIN] Request Body:`, JSON.stringify(req.body));
   console.log(`[APPLE SIGNIN] Request Headers (Content-Type):`, req.headers['content-type']);
-  
+
   const { code, id_token: bodyIdToken, user: userJson, state } = req.body;
 
   try {
@@ -820,7 +820,7 @@ router.post("/apple/callback", async (req, res) => {
     const teamId = process.env.APPLE_TEAM_ID;
     const keyId = process.env.APPLE_KEY_ID;
     let privateKey = process.env.APPLE_PRIVATE_KEY;
-    
+
     console.log(`[APPLE SIGNIN] Environment - ClientID: ${clientId ? '✓' : '✗'}, TeamID: ${teamId ? '✓' : '✗'}, KeyID: ${keyId ? '✓' : '✗'}, PrivateKey: ${privateKey ? '✓ (' + privateKey.length + ' chars)' : '✗'}`);
 
     // EXPLICIT CHECK FOR VARIABLES
@@ -834,7 +834,7 @@ router.post("/apple/callback", async (req, res) => {
       try {
         const filePath = path.resolve(process.cwd(), privateKey);
         privateKey = fs.readFileSync(filePath, 'utf8');
-          console.log(`[APPLE SIGNIN] Loaded private key from file: ${filePath}`);
+        console.log(`[APPLE SIGNIN] Loaded private key from file: ${filePath}`);
       } catch (err) {
         throw new Error(`Failed to read key file at ${privateKey}: ${err.message}`);
       }
@@ -845,7 +845,7 @@ router.post("/apple/callback", async (req, res) => {
     if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
       privateKey = privateKey.substring(1, privateKey.length - 1);
     }
-    
+
     if (privateKey.includes('BEGIN PRIVATE KEY')) {
       // Robust re-builder: strip EVERYTHING then chunk it out cleanly.
       // This protects against bad copy/pasting in Google Cloud Run where space might be injected instead of newline.
@@ -857,7 +857,7 @@ router.post("/apple/callback", async (req, res) => {
 
       let formattedKey = '-----BEGIN PRIVATE KEY-----\n';
       for (let i = 0; i < base64Data.length; i += 64) {
-          formattedKey += base64Data.substring(i, i + 64) + '\n';
+        formattedKey += base64Data.substring(i, i + 64) + '\n';
       }
       formattedKey += '-----END PRIVATE KEY-----';
       privateKey = formattedKey;
@@ -878,7 +878,7 @@ router.post("/apple/callback", async (req, res) => {
           keyIdentifier: keyId,
           privateKey: privateKey,
         });
-        
+
         console.log(`[APPLE SIGNIN] Client Secret generated successfully.`);
 
         const tokenResponse = await appleSignin.getAuthorizationToken(code, {
@@ -903,10 +903,33 @@ router.post("/apple/callback", async (req, res) => {
     }
 
     // 2. Verify the ID Token (either from body or from exchange)
-    const verifiedToken = await appleSignin.verifyIdToken(finalIdToken, {
-      audience: clientId,
-      ignoreExpiration: false,
-    });
+    let verifiedToken;
+    try {
+      verifiedToken = await appleSignin.verifyIdToken(finalIdToken, {
+        audience: clientId,
+        ignoreExpiration: false,
+      });
+    } catch (err) {
+      const appBundleId = process.env.APPLE_BUNDLE_ID || 'com.aisa24.app';
+      console.log(`[APPLE SIGNIN] Web client ID verification failed, trying iOS bundle ID: ${appBundleId}`);
+      try {
+        verifiedToken = await appleSignin.verifyIdToken(finalIdToken, {
+          audience: appBundleId,
+          ignoreExpiration: false,
+        });
+      } catch (innerErr) {
+        // Try fallback for com.aisa24.login just in case it was used
+        try {
+          console.log(`[APPLE SIGNIN] Trying fallback bundle ID: com.aisa24.login`);
+          verifiedToken = await appleSignin.verifyIdToken(finalIdToken, {
+            audience: 'com.aisa24.login',
+            ignoreExpiration: false,
+          });
+        } catch (finalErr) {
+          throw new Error(`Token verification failed for Web, App (com.aisa24.app), and fallback (com.aisa24.login): ${err.message}`);
+        }
+      }
+    }
 
     const { sub: providerId, email } = verifiedToken;
 
@@ -933,15 +956,15 @@ router.post("/apple/callback", async (req, res) => {
     const isIOS = /iPhone|iPad/.test(userAgent);
     const isMac = /Macintosh/.test(userAgent);
     const platform = isIOS ? 'iOS' : isMac ? 'macOS' : 'Web';
-    
+
     console.error(`[APPLE SIGNIN ERROR] Platform: ${platform}`);
     console.error(`[APPLE SIGNIN ERROR] Message:`, err.message);
     console.error(`[APPLE SIGNIN ERROR] Stack:`, err.stack);
-    
+
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const errorMsg = `Apple login failed on ${platform}: ${err.message}`;
     console.log(`[APPLE SIGNIN] Redirecting to: ${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
-    
+
     return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}&platform=${platform}`);
   }
 });
@@ -1038,7 +1061,7 @@ router.get("/sync-profile", verifyToken, async (req, res) => {
       await user.save();
       return res.status(200).json({ message: "Profile synchronized successfully!", avatar: user.avatar });
     }
-    
+
     res.status(200).json({ message: "No new photo found. Please ensure your social profile is public or log in with Google.", avatar: user.avatar });
   } catch (err) {
     res.status(500).json({ error: "Failed to sync profile" });
