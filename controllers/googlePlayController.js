@@ -10,29 +10,40 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Path to Google Cloud Service Account JSON Key file (should be placed in backend root)
+// Path to Google Cloud Service Account JSON Key file (optional - placed in backend root)
 const keyFilePath = path.join(__dirname, '..', 'google-play-key.json');
+const hasKeyFile = fs.existsSync(keyFilePath);
 
-// Initialize Google Play Developer API client if JSON key exists
+// Initialize Google Play Developer API client
+// Priority: 1) JSON key file  2) ADC (gcloud auth application-default login)  3) Simulation mode
 let playDeveloperApi = null;
-if (fs.existsSync(keyFilePath)) {
+
+(async () => {
     try {
-        const auth = new google.auth.GoogleAuth({
-            keyFile: keyFilePath,
+        const authConfig = {
             scopes: ['https://www.googleapis.com/auth/androidpublisher']
-        });
-        playDeveloperApi = google.androidpublisher({
-            version: 'v3',
-            auth: auth
-        });
+        };
+
+        if (hasKeyFile) {
+            // Mode 1: Explicit service account JSON key (required for production servers)
+            authConfig.keyFile = keyFilePath;
+            console.log('🔑 Google Play: Using service account JSON key file.');
+        } else {
+            // Mode 2: Application Default Credentials (gcloud auth application-default login)
+            console.log('🔐 Google Play: No key file found. Attempting Application Default Credentials (ADC)...');
+        }
+
+        const auth = new google.auth.GoogleAuth(authConfig);
+        await auth.getClient(); // Throws if no credentials available
+
+        playDeveloperApi = google.androidpublisher({ version: 'v3', auth });
         console.log('✅ Google Play Developer API client initialized successfully.');
     } catch (err) {
-        console.error('❌ Failed to initialize Google Play API client:', err.message);
+        console.log(`⚠️ Google Play API unavailable. Running in Simulation/Sandbox mode.`);
+        console.log('   Fix: add google-play-key.json OR run: gcloud auth application-default login');
+        playDeveloperApi = null;
     }
-} else {
-    console.log('⚠️ google-play-key.json not found in backend root. Google Play verification will operate in Simulation/Sandbox mode for local development.');
-}
-
+})();
 /**
  * POST /api/payment/verify/google
  * Verifies an Android Google Play subscription purchase token and activates/upgrades user plan.
@@ -73,7 +84,7 @@ export const verifyGooglePlaySubscription = async (req, res) => {
             try {
                 // Call Google Play Developer API
                 const response = await playDeveloperApi.purchases.subscriptions.get({
-                    packageName: 'com.uwo.aisa',
+                    packageName: process.env.GOOGLE_PLAY_PACKAGE_NAME || 'com.uwo.aisa',
                     subscriptionId: productId,
                     token: purchaseToken
                 });
