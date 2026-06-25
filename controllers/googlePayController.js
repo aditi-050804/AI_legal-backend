@@ -70,6 +70,15 @@ export const createGooglePayOrder = async (req, res) => {
 
         const isTestMode = (process.env.GOOGLE_PAY_ENV || 'TEST') === 'TEST';
 
+        // Extract 14-character Razorpay Merchant ID from Key ID (rzp_live_MID)
+        const getRazorpayMerchantId = (keyId) => {
+            if (!keyId) return 'SBFlInxBiRfOGd';
+            const parts = keyId.split('_');
+            return parts[parts.length - 1] || 'SBFlInxBiRfOGd';
+        };
+        const gatewayMerchantId = getRazorpayMerchantId(process.env.RAZORPAY_KEY_ID);
+        const googlePayMerchantId = process.env.GOOGLE_PAY_MERCHANT_ID || 'BCR2DN7TTCBOV2A3';
+
         return res.status(200).json({
             success: true,
             orderId: order.id,
@@ -91,7 +100,7 @@ export const createGooglePayOrder = async (req, res) => {
                         type: 'PAYMENT_GATEWAY',
                         parameters: {
                             gateway: 'razorpay',
-                            gatewayMerchantId: process.env.RAZORPAY_KEY_ID
+                            gatewayMerchantId: gatewayMerchantId
                         }
                     }
                 }],
@@ -100,8 +109,8 @@ export const createGooglePayOrder = async (req, res) => {
                 merchantInfo: isTestMode
                     ? { merchantName: 'AISA' }
                     : {
-                        merchantId: process.env.GOOGLE_PAY_MERCHANT_ID,
-                        merchantName: 'AISA'
+                        merchantId: googlePayMerchantId,
+                        merchantName: 'Unified Web Options and Services Private Limited'
                     },
                 transactionInfo: {
                     totalPriceStatus: 'FINAL',
