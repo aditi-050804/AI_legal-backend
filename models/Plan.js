@@ -16,6 +16,13 @@ const planSchema = new mongoose.Schema({
     editImageAllowed: { type: Boolean, default: false }, // image editing allowed
     cashflowAllowed: { type: Boolean, default: false },  // CashFlow stock tabs allowed
     validityDays: { type: Number, default: 90 },   // how many days plan is valid (Free=90, paid plans based on billing)
+    aiLegalAllowed: { type: Boolean, default: false },
+    aiAdsAllowed: { type: Boolean, default: false },
+    voiceGenAllowed: { type: Boolean, default: false },
+    webSearchAllowed: { type: Boolean, default: false },
+    deepSearchAllowed: { type: Boolean, default: false },
+    codeWriterAllowed: { type: Boolean, default: false },
+    documentConvertAllowed: { type: Boolean, default: false },
 
     // ── LEGACY FIELDS (kept for DB compatibility, not used for enforcement) ────
     validityMonthly: { type: Number, default: 1 },

@@ -1,53 +1,11 @@
 import User from '../models/User.js';
-// import Subscription from '../models/Subscription.js';
 import Subscription from '../models/Subscription.js';
 import Plan from '../models/Plan.js';
-import CreditPackage from '../models/CreditPackage.js';
-import CreditLog from '../models/CreditLog.js';
 import SupportTicket from '../models/SupportTicket.js';
-import FeatureCredit from '../models/FeatureCredit.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
-
-export const getFeatureCredits = async (req, res) => {
-    try {
-        const features = await FeatureCredit.find({});
-        res.status(200).json({ success: true, features });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to fetch feature credits' });
-    }
-};
-
-export const updateFeatureCredit = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { cost, uiLabel, isActive } = req.body;
-        
-        const feature = await FeatureCredit.findByIdAndUpdate(
-            id, 
-            { cost, uiLabel, isActive }, 
-            { new: true }
-        );
-        
-        if (!feature) {
-            return res.status(404).json({ success: false, message: 'Feature not found' });
-        }
-        
-        // Notify the application to refresh its RAM cache
-        try {
-            const { refreshFeatureCostCache } = await import('../services/subscriptionService.js');
-            await refreshFeatureCostCache();
-        } catch(cacheErr) {
-            console.error("Failed to refresh feature cost cache:", cacheErr);
-        }
-        
-        res.status(200).json({ success: true, feature });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to update feature credit' });
-    }
-};
 
 export const getAdminStats = async (req, res) => {
     try {
@@ -87,26 +45,26 @@ export const getAdminStats = async (req, res) => {
         ]);
         const totalRevenue = revenueAggregation.length > 0 ? revenueAggregation[0].total : 0;
 
-        // Credit usage from real logs
-        const creditUsageData = await CreditLog.aggregate([
-            { $match: { credits: { $lt: 0 } } },
-            { $group: { 
-                _id: null, 
-                totalUsed: { $sum: { $abs: "$credits" } } 
-            } }
+        // Tool usage analytics from UserQuota
+        const UserQuota = (await import('../models/UserQuota.js')).default;
+        const quotaAggregation = await UserQuota.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    images: { $sum: "$imagesUsed" },
+                    carousels: { $sum: "$carouselsUsed" },
+                    videos: { $sum: "$videosUsed" },
+                    chat: { $sum: "$chatUsed" }
+                }
+            }
         ]);
-        const totalCreditsUsed = creditUsageData.length > 0 ? creditUsageData[0].totalUsed : 0;
-
-        // Tool usage analytics grouped by action
-        const toolUsage = await CreditLog.aggregate([
-            { $match: { credits: { $lt: 0 } } },
-            { $group: { 
-                _id: "$action", 
-                count: { $sum: 1 }, 
-                totalCredits: { $sum: { $abs: "$credits" } } 
-            } },
-            { $sort: { count: -1 } }
-        ]);
+        const counts = quotaAggregation[0] || { images: 0, carousels: 0, videos: 0, chat: 0 };
+        const toolUsage = [
+            { _id: 'AI Chat', count: counts.chat },
+            { _id: 'Image Generation', count: counts.images },
+            { _id: 'Carousel Generation', count: counts.carousels },
+            { _id: 'Video Generation', count: counts.videos }
+        ].filter(t => t.count > 0).sort((a, b) => b.count - a.count);
 
         res.status(200).json({
             success: true,
@@ -114,7 +72,7 @@ export const getAdminStats = async (req, res) => {
                 totalUsers,
                 activeSubscriptions: activeSubscriptionsCount,
                 totalRevenue,
-                totalCreditsUsed,
+                totalCreditsUsed: 0,
                 toolUsage,
                 pendingTickets
             }
@@ -140,92 +98,6 @@ export const searchUserByEmail = async (req, res) => {
         });
     } catch (error) {
         console.error("[searchUserByEmail Error]", error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-export const adjustCredits = async (req, res) => {
-    try {
-        const { userId, credits, amount } = req.body;
-        const adminId = req.user.id;
-        
-        // Find the target user and admin
-        const targetUser = await User.findById(userId);
-        if (!targetUser) return res.status(404).json({ success: false, message: 'User not found' });
-        
-        let adminUser = await User.findById(adminId);
-        if (!adminUser) {
-            adminUser = await User.findOne({ email: 'admin@uwo24.com' });
-        }
-        if (!adminUser) return res.status(404).json({ success: false, message: 'Admin not found' });
-        
-        const oldCredits = targetUser.credits || 0;
-        
-        // Determine the delta to transfer
-        // If 'amount' is provided, we use it directly (additive)
-        // If only 'credits' is provided, we calculate the difference (absolute update)
-        let creditsToTransfer = 0;
-        if (typeof amount === 'number') {
-            creditsToTransfer = amount;
-        } else if (typeof credits === 'number') {
-            creditsToTransfer = credits - oldCredits;
-        }
-
-        const newTargetCredits = oldCredits + creditsToTransfer;
-        
-        if (creditsToTransfer > 0) {
-            if ((adminUser.credits || 0) < creditsToTransfer) {
-                return res.status(400).json({ success: false, message: 'Admin does not have enough credits to transfer.' });
-            }
-        }
-        
-        if (creditsToTransfer !== 0) {
-            const adminIdToUpdate = adminUser._id;
-            const adminNewBalance = (adminUser.credits || 0) - creditsToTransfer;
-            const targetUserNewBalance = newTargetCredits;
-
-            // Deduct/Add from admin pool
-            await User.findByIdAndUpdate(adminIdToUpdate, { $set: { credits: adminNewBalance } });
-            await Subscription.findOneAndUpdate(
-                { userId: adminIdToUpdate },
-                { $set: { creditsRemaining: adminNewBalance } }
-            );
-            
-            // Create CreditLog for admin
-            await CreditLog.create({
-                userId: adminIdToUpdate,
-                action: creditsToTransfer > 0 ? 'Admin Credit Transfer to User' : 'Admin Credit Recovery from User',
-                credits: -creditsToTransfer,
-                balanceAfter: adminNewBalance,
-                description: `Transferred to/from user ${targetUser.email}`
-            });
-            
-            // Create CreditLog for target user
-            await CreditLog.create({
-                userId: targetUser._id,
-                action: creditsToTransfer > 0 ? 'Credit Received from Admin' : 'Credit Deducted by Admin',
-                credits: creditsToTransfer,
-                balanceAfter: targetUserNewBalance,
-                description: `Processed by admin ${adminUser.email}`
-            });
-        }
-
-        // Update both the user model and the subscription model for consistency
-        await User.findByIdAndUpdate(userId, { $set: { credits: newTargetCredits } });
-        
-        const subscription = await Subscription.findOneAndUpdate(
-            { userId: userId },
-            { $set: { creditsRemaining: newTargetCredits } },
-            { new: true }
-        );
-
-        res.status(200).json({
-            success: true,
-            message: `Transferred ${creditsToTransfer} credits successfully.`,
-            subscription
-        });
-    } catch (error) {
-        console.error("[adjustCredits Error]", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
@@ -298,35 +170,6 @@ export const deletePlan = async (req, res) => {
     }
 };
 
-export const createCreditPackage = async (req, res) => {
-    try {
-        const packageData = await CreditPackage.create(req.body);
-        res.status(201).json({ success: true, packageData });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-export const updateCreditPackage = async (req, res) => {
-    try {
-        const { packageId } = req.params;
-        const packageData = await CreditPackage.findByIdAndUpdate(packageId, req.body, { new: true });
-        if (!packageData) return res.status(404).json({ success: false, message: "Package not found" });
-        res.status(200).json({ success: true, packageData });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-export const deleteCreditPackage = async (req, res) => {
-    try {
-        const { packageId } = req.params;
-        await CreditPackage.findByIdAndDelete(packageId);
-        res.status(200).json({ success: true, message: "Package deleted successfully" });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
 
 // Returns ALL plans (regardless of isActive) for admin use
 export const getAllPlansAdmin = async (req, res) => {

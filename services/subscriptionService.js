@@ -6,10 +6,10 @@ import Plan from '../models/Plan.js';
 // ── PLAN QUOTA DEFAULTS (fallback if not found in DB) ─────────────────────────
 // These match the seeded plan documents exactly.
 const PLAN_QUOTA_DEFAULTS = {
-    'Plan_0': { chatLimit: 100, chatScope: 'total',     imageLimit: 0,  carouselLimit: 0, videoLimit: 0, editImageAllowed: false, cashflowAllowed: false, validityDays: 90  },
-    'Plan_1': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 0,  carouselLimit: 0, videoLimit: 0, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30  },
-    'Plan_2': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 5,  carouselLimit: 1, videoLimit: 0, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30  },
-    'Plan_3': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 10, carouselLimit: 5, videoLimit: 5, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30  },
+    'Plan_0': { chatLimit: 100, chatScope: 'total',     imageLimit: 0,  carouselLimit: 0, videoLimit: 0, editImageAllowed: false, cashflowAllowed: false, validityDays: 90, aiLegalAllowed: false, aiAdsAllowed: false, voiceGenAllowed: false, webSearchAllowed: false, deepSearchAllowed: false, codeWriterAllowed: false, documentConvertAllowed: false },
+    'Plan_1': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 0,  carouselLimit: 0, videoLimit: 0, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30, aiLegalAllowed: true,  aiAdsAllowed: false, voiceGenAllowed: true,  webSearchAllowed: true,  deepSearchAllowed: true,  codeWriterAllowed: true,  documentConvertAllowed: true  },
+    'Plan_2': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 5,  carouselLimit: 1, videoLimit: 0, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30, aiLegalAllowed: true,  aiAdsAllowed: true,  voiceGenAllowed: true,  webSearchAllowed: true,  deepSearchAllowed: true,  codeWriterAllowed: true,  documentConvertAllowed: true  },
+    'Plan_3': { chatLimit: -1,  chatScope: 'unlimited', imageLimit: 10, carouselLimit: 5, videoLimit: 5, editImageAllowed: true,  cashflowAllowed: true,  validityDays: 30, aiLegalAllowed: true,  aiAdsAllowed: true,  voiceGenAllowed: true,  webSearchAllowed: true,  deepSearchAllowed: true,  codeWriterAllowed: true,  documentConvertAllowed: true  },
 };
 
 /**
@@ -29,6 +29,13 @@ const getPlanDefaultsFromDb = async (planKey) => {
                 editImageAllowed: plan.editImageAllowed,
                 cashflowAllowed: plan.cashflowAllowed,
                 validityDays: plan.validityDays,
+                aiLegalAllowed: plan.aiLegalAllowed,
+                aiAdsAllowed: plan.aiAdsAllowed,
+                voiceGenAllowed: plan.voiceGenAllowed,
+                webSearchAllowed: plan.webSearchAllowed,
+                deepSearchAllowed: plan.deepSearchAllowed,
+                codeWriterAllowed: plan.codeWriterAllowed,
+                documentConvertAllowed: plan.documentConvertAllowed,
             };
         }
     } catch (err) {
@@ -59,7 +66,7 @@ export const getUserPlan = async (userId) => {
 
     // Admins bypass all quota enforcement
     if (user.role === 'admin' || (user.email && user.email.toLowerCase() === 'admin@uwo24.com')) {
-        return { planKey: 'admin', chatLimit: -1, chatScope: 'unlimited', imageLimit: 999, carouselLimit: 999, videoLimit: 999, editImageAllowed: true, cashflowAllowed: true, validityDays: 99999 };
+        return { planKey: 'admin', chatLimit: -1, chatScope: 'unlimited', imageLimit: 999, carouselLimit: 999, videoLimit: 999, editImageAllowed: true, cashflowAllowed: true, validityDays: 99999, aiLegalAllowed: true, aiAdsAllowed: true, voiceGenAllowed: true, webSearchAllowed: true, deepSearchAllowed: true, codeWriterAllowed: true, documentConvertAllowed: true };
     }
 
     // Founder status → treat as Business plan
@@ -106,6 +113,13 @@ export const getUserPlan = async (userId) => {
         editImageAllowed: plan.editImageAllowed ?? defaults.editImageAllowed,
         cashflowAllowed:  plan.cashflowAllowed  ?? defaults.cashflowAllowed,
         validityDays:     plan.validityDays     ?? defaults.validityDays,
+        aiLegalAllowed:    plan.aiLegalAllowed    ?? defaults.aiLegalAllowed,
+        aiAdsAllowed:      plan.aiAdsAllowed      ?? defaults.aiAdsAllowed,
+        voiceGenAllowed:   plan.voiceGenAllowed   ?? defaults.voiceGenAllowed,
+        webSearchAllowed:  plan.webSearchAllowed  ?? defaults.webSearchAllowed,
+        deepSearchAllowed: plan.deepSearchAllowed ?? defaults.deepSearchAllowed,
+        codeWriterAllowed: plan.codeWriterAllowed ?? defaults.codeWriterAllowed,
+        documentConvertAllowed: plan.documentConvertAllowed ?? defaults.documentConvertAllowed,
     };
 };
 
@@ -280,11 +294,11 @@ export const checkQuota = async (userId, action) => {
         }
 
         case 'ai_legal': {
-            if (plan.planKey === 'Plan_0') {
+            if (!plan.aiLegalAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'AI Legal™ Advisor is not available on the Free plan. Upgrade to Creator (₹499/mo) or higher to access.',
+                    reason: 'AI Legal™ Advisor is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }
@@ -292,11 +306,11 @@ export const checkQuota = async (userId, action) => {
         }
 
         case 'ai_ads': {
-            if (plan.planKey === 'Plan_0' || plan.planKey === 'Plan_1') {
+            if (!plan.aiAdsAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'AI Ads™ Agent is not available on your current plan. Upgrade to Startup (₹999/mo) or higher to access.',
+                    reason: 'AI Ads™ Agent is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }
@@ -304,11 +318,11 @@ export const checkQuota = async (userId, action) => {
         }
 
         case 'voice_gen': {
-            if (plan.planKey === 'Plan_0') {
+            if (!plan.voiceGenAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'Voice generation is not available on the Free plan. Upgrade to Creator (₹499/mo) or higher to access.',
+                    reason: 'Voice generation is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }
@@ -316,11 +330,11 @@ export const checkQuota = async (userId, action) => {
         }
 
         case 'web_search': {
-            if (plan.planKey === 'Plan_0') {
+            if (!plan.webSearchAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'Web Search is not available on the Free plan. Upgrade to Creator (₹499/mo) or higher to access.',
+                    reason: 'Web Search is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }
@@ -329,11 +343,11 @@ export const checkQuota = async (userId, action) => {
 
         case 'deep_search':
         case 'DEEP_SEARCH': {
-            if (plan.planKey === 'Plan_0') {
+            if (!plan.deepSearchAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'Deep Search is not available on the Free plan. Upgrade to Creator (₹499/mo) or higher to access.',
+                    reason: 'Deep Search is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }
@@ -341,11 +355,23 @@ export const checkQuota = async (userId, action) => {
         }
 
         case 'code_writer': {
-            if (plan.planKey === 'Plan_0') {
+            if (!plan.codeWriterAllowed) {
                 return {
                     allowed: false,
                     code: 'PLAN_RESTRICTED',
-                    reason: 'Code Writer is not available on the Free plan. Upgrade to Creator (₹499/mo) or higher to access.',
+                    reason: 'Code Writer is not available on your current plan. Please upgrade to access.',
+                    planKey: plan.planKey
+                };
+            }
+            return { allowed: true, planKey: plan.planKey };
+        }
+
+        case 'convert_document': {
+            if (!plan.documentConvertAllowed) {
+                return {
+                    allowed: false,
+                    code: 'PLAN_RESTRICTED',
+                    reason: 'Document converter is not available on your current plan. Please upgrade to access.',
                     planKey: plan.planKey
                 };
             }

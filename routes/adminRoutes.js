@@ -6,16 +6,10 @@ import multer from 'multer';
 import {
     getAdminStats,
     searchUserByEmail,
-    adjustCredits,
     manualPlanUpgrade,
     createPlan,
     updatePlan,
     deletePlan,
-    createCreditPackage,
-    updateCreditPackage,
-    deleteCreditPackage,
-    getFeatureCredits,
-    updateFeatureCredit,
     getAllPlansAdmin,
     parseLegalDoc
 } from '../controllers/adminController.js';
@@ -59,7 +53,6 @@ const upload = multer({ storage: storage });
 
 router.get('/stats', verifyToken, isAdmin, getAdminStats);
 router.get('/search-user', verifyToken, isAdmin, searchUserByEmail);
-router.post('/adjust-credits', verifyToken, isAdmin, adjustCredits);
 router.post('/manual-upgrade', verifyToken, isAdmin, manualPlanUpgrade);
 
 // Plan routes
@@ -67,16 +60,6 @@ router.get('/plans', verifyToken, isAdmin, getAllPlansAdmin);
 router.post('/plans', verifyToken, isAdmin, createPlan);
 router.put('/plans/:planId', verifyToken, isAdmin, updatePlan);
 router.delete('/plans/:planId', verifyToken, isAdmin, deletePlan);
-
-
-// Credit package routes
-router.post('/packages', verifyToken, isAdmin, createCreditPackage);
-router.put('/packages/:packageId', verifyToken, isAdmin, updateCreditPackage);
-router.delete('/packages/:packageId', verifyToken, isAdmin, deleteCreditPackage);
-
-// Feature Credit metrics and adjustments
-router.get('/feature-credits', verifyToken, isAdmin, getFeatureCredits);
-router.put('/feature-credits/:id', verifyToken, isAdmin, updateFeatureCredit);
 
 // Legal Document Parsing
 router.post('/parse-legal-doc', verifyToken, isAdmin, upload.single('file'), (req, res, next) => {
