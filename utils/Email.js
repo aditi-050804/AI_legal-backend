@@ -1,7 +1,6 @@
 import { Verification_Email_Template, Welcome_Email_Template, Reset_Password_Email_Template, Password_Change_Success_Template, Reset_Password_OTP_Template } from "./EmailTemplate.js";
-import { resend, transporter } from "./Email.config.js";
+import { resend } from "./Email.config.js";
 import { dashboardUrl } from "../consts.js";
-//  console.log(transporter);
 
 export const sendVerificationEmail = async (email, name, verificationCode) => {
   try {
