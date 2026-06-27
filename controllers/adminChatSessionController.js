@@ -59,6 +59,33 @@ export const getChatSessionStats = async (req, res) => {
               }
             }
           },
+          hasError: {
+            $gt: [
+              {
+                $size: {
+                  $filter: {
+                    input: { $ifNull: ['$messages', []] },
+                    as: 'msg',
+                    cond: {
+                      $and: [
+                        { $in: ['$$msg.role', ['model', 'assistant']] },
+                        {
+                          $or: [
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, '❌'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Error'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'error'] }, -1] }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              0
+            ]
+          },
           guestId: 1,
           userId: 1
         }
@@ -79,18 +106,24 @@ export const getChatSessionStats = async (req, res) => {
           },
           sessionStatus: {
             $cond: {
-              if: { $eq: ['$totalMsgs', 0] },
-              then: 'abandoned',
+              if: '$hasError',
+              then: 'failed',
               else: {
                 $cond: {
-                  if: {
-                    $lt: [
-                      { $subtract: [Date.now(), { $ifNull: ['$lastModifiedMs', Date.now()] }] },
-                      thirtyMinutesMs
-                    ]
-                  },
-                  then: 'active',
-                  else: 'completed'
+                  if: { $eq: ['$totalMsgs', 0] },
+                  then: 'abandoned',
+                  else: {
+                    $cond: {
+                      if: {
+                        $lt: [
+                          { $subtract: [Date.now(), { $ifNull: ['$lastModifiedMs', Date.now()] }] },
+                          thirtyMinutesMs
+                        ]
+                      },
+                      then: 'active',
+                      else: 'completed'
+                    }
+                  }
                 }
               }
             }
@@ -107,6 +140,7 @@ export const getChatSessionStats = async (req, res) => {
           active: { $sum: { $cond: [{ $eq: ['$sessionStatus', 'active'] }, 1, 0] } },
           completed: { $sum: { $cond: [{ $eq: ['$sessionStatus', 'completed'] }, 1, 0] } },
           abandoned: { $sum: { $cond: [{ $eq: ['$sessionStatus', 'abandoned'] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ['$sessionStatus', 'failed'] }, 1, 0] } },
           totalGuest: { $sum: { $cond: [{ $ifNull: ['$guestId', false] }, 1, 0] } },
           totalRegistered: { $sum: { $cond: [{ $ifNull: ['$userId', false] }, 1, 0] } }
         }
@@ -141,7 +175,8 @@ export const getChatSessionStats = async (req, res) => {
         statusCounts: {
           active: result?.active || 0,
           completed: result?.completed || 0,
-          abandoned: result?.abandoned || 0
+          abandoned: result?.abandoned || 0,
+          failed: result?.failed || 0
         },
         modeCounts
       }
@@ -170,7 +205,29 @@ export const getChatSessions = async (req, res) => {
     // Build match stage
     const matchStage = {};
 
-    if (mode) matchStage.detectedMode = mode;
+    if (mode) {
+      if (mode === 'NORMAL_CHAT') {
+        matchStage.detectedMode = { $in: ['NORMAL_CHAT', 'chat', 'CHAT', null] };
+      } else if (mode === 'LEGAL_TOOLKIT') {
+        matchStage.detectedMode = { $in: ['LEGAL_TOOLKIT', 'legal'] };
+      } else if (mode === 'IMAGE_GENERATION') {
+        matchStage.detectedMode = { $in: ['IMAGE_GENERATION', 'imageGen', 'image'] };
+      } else if (mode === 'VIDEO_GENERATION') {
+        matchStage.detectedMode = { $in: ['VIDEO_GENERATION', 'videoGen', 'video'] };
+      } else if (mode === 'IMAGE_EDIT') {
+        matchStage.detectedMode = { $in: ['IMAGE_EDIT', 'editImage', 'edit_image'] };
+      } else if (mode === 'AUDIO_CONVERT') {
+        matchStage.detectedMode = { $in: ['audioGen', 'AUDIO_CONVERT', 'audio'] };
+      } else if (mode === 'DOCUMENT_CONVERT') {
+        matchStage.detectedMode = { $in: ['DOCUMENT_CONVERT', 'document'] };
+      } else if (mode === 'CODE_WRITER') {
+        matchStage.detectedMode = { $in: ['CODE_WRITER', 'CODING_HELP', 'code'] };
+      } else if (mode === 'CASHFLOW') {
+        matchStage.detectedMode = { $in: ['CASHFLOW', 'ai_cashflow'] };
+      } else {
+        matchStage.detectedMode = mode;
+      }
+    }
 
     if (dateFrom || dateTo) {
       matchStage.createdAt = {};
@@ -218,6 +275,33 @@ export const getChatSessions = async (req, res) => {
               }
             }
           },
+          hasError: {
+            $gt: [
+              {
+                $size: {
+                  $filter: {
+                    input: { $ifNull: ['$messages', []] },
+                    as: 'msg',
+                    cond: {
+                      $and: [
+                        { $in: ['$$msg.role', ['model', 'assistant']] },
+                        {
+                          $or: [
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, '❌'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Error'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'error'] }, -1] }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              0
+            ]
+          },
           durationMs: {
             $subtract: [
               { $toLong: '$lastModified' },
@@ -233,28 +317,32 @@ export const getChatSessions = async (req, res) => {
       {
         $addFields: {
           sessionStatus: {
-            $switch: {
-              branches: [
-                {
-                  case: { $eq: ['$totalMessages', 0] },
-                  then: 'abandoned'
-                },
-                {
-                  case: {
-                    $lt: [
-                      {
-                        $subtract: [
-                          new Date(),
-                          { $toDate: '$lastModified' }
+            $cond: {
+              if: '$hasError',
+              then: 'failed',
+              else: {
+                $cond: {
+                  if: { $eq: ['$totalMessages', 0] },
+                  then: 'abandoned',
+                  else: {
+                    $cond: {
+                      if: {
+                        $lt: [
+                          {
+                            $subtract: [
+                              new Date(),
+                              { $toDate: '$lastModified' }
+                            ]
+                          },
+                          1800000 // 30 minutes in ms
                         ]
                       },
-                      1800000 // 30 minutes in ms
-                    ]
-                  },
-                  then: 'active'
+                      then: 'active',
+                      else: 'completed'
+                    }
+                  }
                 }
-              ],
-              default: 'completed'
+              }
             }
           }
         }
@@ -375,6 +463,33 @@ export const getChatSessionDetail = async (req, res) => {
               }
             }
           },
+          hasError: {
+            $gt: [
+              {
+                $size: {
+                  $filter: {
+                    input: { $ifNull: ['$messages', []] },
+                    as: 'msg',
+                    cond: {
+                      $and: [
+                        { $in: ['$$msg.role', ['model', 'assistant']] },
+                        {
+                          $or: [
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, '❌'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'failed'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'Error'] }, -1] },
+                            { $ne: [{ $indexOfCP: [{ $ifNull: ['$$msg.content', ''] }, 'error'] }, -1] }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              0
+            ]
+          },
           durationMs: {
             $subtract: [
               { $toLong: '$lastModified' },
@@ -389,20 +504,27 @@ export const getChatSessionDetail = async (req, res) => {
       {
         $addFields: {
           sessionStatus: {
-            $switch: {
-              branches: [
-                { case: { $eq: ['$totalMessages', 0] }, then: 'abandoned' },
-                {
-                  case: {
-                    $lt: [
-                      { $subtract: [new Date(), { $toDate: '$lastModified' }] },
-                      1800000
-                    ]
-                  },
-                  then: 'active'
+            $cond: {
+              if: '$hasError',
+              then: 'failed',
+              else: {
+                $cond: {
+                  if: { $eq: ['$totalMessages', 0] },
+                  then: 'abandoned',
+                  else: {
+                    $cond: {
+                      if: {
+                        $lt: [
+                          { $subtract: [new Date(), { $toDate: '$lastModified' }] },
+                          1800000
+                        ]
+                      },
+                      then: 'active',
+                      else: 'completed'
+                    }
+                  }
                 }
-              ],
-              default: 'completed'
+              }
             }
           }
         }
