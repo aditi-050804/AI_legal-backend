@@ -142,7 +142,7 @@ export const getChatSessions = async (req, res) => {
           as: 'userInfo'
         }
       },
-      { $unwind: { path: '$userInfo', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
 
       // Compute derived fields
       {
@@ -301,7 +301,7 @@ export const getChatSessionDetail = async (req, res) => {
           as: 'userInfo'
         }
       },
-      { $unwind: { path: '$userInfo', preserveNullAndEmpty: true } },
+      { $unwind: { path: '$userInfo', preserveNullAndEmptyArrays: true } },
       {
         $addFields: {
           totalMessages: { $size: '$messages' },
