@@ -16,10 +16,11 @@ const MONGO_URI = process.env.MONGODB_ATLAS_URI || process.env.MONGO_URI;
 async function check() {
     await mongoose.connect(MONGO_URI);
     
-    const Plan = (await import('../models/Plan.js')).default;
-    const plans = await Plan.find({}).lean();
-    console.log("PLANS IN DB:");
-    console.log(JSON.stringify(plans, null, 2));
+    const User = (await import('../models/User.js')).default;
+    const Subscription = (await import('../models/Subscription.js')).default;
+    
+    const userById = await User.findById("6a427ca84fa51caf724c3800").lean();
+    console.log("User by ID 6a427ca84fa51caf724c3800:", userById);
     
     await mongoose.disconnect();
 }

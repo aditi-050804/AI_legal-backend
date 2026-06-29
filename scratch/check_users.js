@@ -1,25 +1,39 @@
-import connectDB from '../config/db.js';
-import User from '../models/User.js';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dns from 'dns';
 
-await connectDB();
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {}
 
-const total = await User.countDocuments({});
-const roleUser = await User.countDocuments({ role: 'user' });
-const roleAdmin = await User.countDocuments({ role: 'admin' });
-const noRole = await User.countDocuments({ role: { $exists: false } });
-const roleNull = await User.countDocuments({ role: null });
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: join(__dirname, '..', '.env') });
 
-console.log('=== USER STATS ===');
-console.log('Total users in DB:', total);
-console.log('role = "user":', roleUser);
-console.log('role = "admin":', roleAdmin);
-console.log('role field missing:', noRole);
-console.log('role = null:', roleNull);
+const MONGO_URI = process.env.MONGODB_ATLAS_URI || process.env.MONGO_URI;
 
-const sample = await User.find({}).select('name email role isBlocked').limit(10);
-console.log('\nSample users:');
-sample.forEach(u => console.log(` - ${u.name} | ${u.email} | role: ${u.role}`));
+async function check() {
+    await mongoose.connect(MONGO_URI);
+    
+    const User = (await import('../models/User.js')).default;
+    const Subscription = (await import('../models/Subscription.js')).default;
+    const Plan = (await import('../models/Plan.js')).default;
+    
+    const users = await User.find({}).sort({ updatedAt: -1 }).limit(10).lean();
+    console.log("RECENT USERS:");
+    for (const u of users) {
+        const sub = await Subscription.findOne({ userId: u._id, subscriptionStatus: 'active' }).populate('planId').lean();
+        console.log(`User: ${u.email} (${u.name}) | ID: ${u._id}`);
+        if (sub) {
+            console.log(`  Plan: ${sub.planId?.planName || 'Unknown'} (Key: ${sub.planId?.planKey})`);
+            console.log(`  Renewal: ${sub.renewalDate}`);
+        } else {
+            console.log(`  Plan: None (Free)`);
+        }
+    }
+    
+    await mongoose.disconnect();
+}
 
-await mongoose.connection.close();
-process.exit(0);
+check().catch(console.error);
