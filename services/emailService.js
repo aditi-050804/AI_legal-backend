@@ -298,3 +298,48 @@ export const sendShareLinkEmail = async (targetEmail, shareLink, sessionTitle, s
     }
 };
 
+/**
+ * Send custom admin email to user
+ */
+export const sendAdminToUserEmail = async (userEmail, userName, subject, message) => {
+    try {
+        await resend.emails.send({
+            from: `AISA™ <${EMAIL_CONFIG.user}>`,
+            to: [userEmail],
+            subject: subject || `Message from AISA Admin`,
+            html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+                    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 10px 10px 0 0; text-align: center;">
+                        <h1 style="color: white; margin: 0;">AISA™</h1>
+                        <p style="color: #f0f0f0; margin: 5px 0 0 0;">Official Admin Communication</p>
+                    </div>
+                    
+                    <div style="padding: 30px; background: #f9fafb;">
+                        <h2 style="color: #1e293b; margin-top: 0;">Hello ${userName || 'User'},</h2>
+                        <p style="color: #475569; margin-bottom: 20px;">An administrator from AISA has sent you a message:</p>
+                        
+                        <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                            <p style="color: #1e293b; line-height: 1.6; white-space: pre-wrap; font-size: 14px; margin: 0;">${message}</p>
+                        </div>
+                        
+                        <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border-left: 4px solid #16a34a; margin-top: 20px;">
+                            <p style="margin: 0; color: #15803d; font-size: 13px;">If you have any questions, you can contact us at <a href="mailto:${EMAIL_CONFIG.adminEmail}" style="color: #16a34a; font-weight: bold; text-decoration: none;">${EMAIL_CONFIG.adminEmail}</a>.</p>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #f1f5f9; padding: 15px; border-radius: 0 0 10px 10px; text-align: center; color: #64748b; font-size: 12px;">
+                        <p style="margin: 0;">AISA™ Intelligence Platform</p>
+                        <p style="margin: 5px 0 0 0;">This email was sent by the system administrator.</p>
+                    </div>
+                </div>
+            `
+        });
+        console.log('[EMAIL SERVICE] Admin-to-User email sent successfully to:', userEmail);
+        return { success: true, message: 'Email sent successfully' };
+    } catch (error) {
+        console.error('[EMAIL SERVICE] Failed to send Admin-to-User email:', error);
+        return { success: false, message: error.message };
+    }
+};
+
+

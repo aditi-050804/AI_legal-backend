@@ -11,7 +11,8 @@ import {
     updatePlan,
     deletePlan,
     getAllPlansAdmin,
-    parseLegalDoc
+    parseLegalDoc,
+    sendEmailToUser
 } from '../controllers/adminController.js';
 import {
     getChatSessionStats,
@@ -59,6 +60,7 @@ const upload = multer({ storage: storage });
 router.get('/stats', verifyToken, isAdmin, getAdminStats);
 router.get('/search-user', verifyToken, isAdmin, searchUserByEmail);
 router.post('/manual-upgrade', verifyToken, isAdmin, manualPlanUpgrade);
+router.post('/send-email', verifyToken, isAdmin, sendEmailToUser);
 
 // Plan routes
 router.get('/plans', verifyToken, isAdmin, getAllPlansAdmin);
