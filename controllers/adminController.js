@@ -2,6 +2,7 @@ import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
 import Plan from '../models/Plan.js';
 import SupportTicket from '../models/SupportTicket.js';
+import { sendAdminToUserEmail } from '../services/emailService.js';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
@@ -111,13 +112,20 @@ export const manualPlanUpgrade = async (req, res) => {
         const plan = await Plan.findOne({ planName: new RegExp(`^${planName}$`, 'i') });
         if (!plan) return res.status(404).json({ success: false, message: `Plan '${planName}' not found.` });
 
+        let calculatedRenewal = expiryDate ? new Date(expiryDate) : null;
+        if (!calculatedRenewal) {
+            calculatedRenewal = new Date();
+            const months = plan.validityMonthly || 1;
+            calculatedRenewal.setMonth(calculatedRenewal.getMonth() + months);
+        }
+
         const subscription = await Subscription.findOneAndUpdate(
             { userId: userId },
             { 
                 planId: plan._id, 
-                renewalDate: expiryDate ? new Date(expiryDate) : undefined,
+                renewalDate: calculatedRenewal,
                 subscriptionStatus: 'active',
-                creditsRemaining: plan.credits
+                creditsRemaining: plan.credits || 0
             },
             { new: true, upsert: true }
         );
@@ -125,7 +133,7 @@ export const manualPlanUpgrade = async (req, res) => {
         // Also update User record for consistency with credit system
         await User.findByIdAndUpdate(userId, { 
             $set: { 
-                credits: plan.credits,
+                credits: plan.credits || 0,
                 founderStatus: plan.planName.toLowerCase().includes('founder')
             } 
         });
@@ -285,3 +293,28 @@ export const parseLegalDoc = async (req, res) => {
         res.status(500).json({ success: false, message: error.message });
     }
 };
+
+export const sendEmailToUser = async (req, res) => {
+    try {
+        const { toEmail, subject, message } = req.body;
+        if (!toEmail || !message) {
+            return res.status(400).json({ success: false, message: 'Recipient email and message are required.' });
+        }
+
+        // Try to find the user's name for personalization
+        const user = await User.findOne({ email: new RegExp(`^${toEmail.trim()}$`, 'i') });
+        const userName = user ? user.name : '';
+
+        const mailRes = await sendAdminToUserEmail(toEmail.trim(), userName, subject, message);
+
+        if (mailRes.success) {
+            return res.status(200).json({ success: true, message: 'Email sent successfully.' });
+        } else {
+            return res.status(500).json({ success: false, message: mailRes.message || 'Failed to send email.' });
+        }
+    } catch (error) {
+        console.error('[sendEmailToUser Error]', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+

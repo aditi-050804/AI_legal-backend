@@ -11,13 +11,15 @@ import {
     updatePlan,
     deletePlan,
     getAllPlansAdmin,
-    parseLegalDoc
+    parseLegalDoc,
+    sendEmailToUser
 } from '../controllers/adminController.js';
 import {
     getChatSessionStats,
     getChatSessions,
     getChatSessionDetail
 } from '../controllers/adminChatSessionController.js';
+import { getAnalytics, getErrorDrillDown } from '../controllers/analyticsController.js';
 
 
 const router = express.Router();
@@ -59,6 +61,7 @@ const upload = multer({ storage: storage });
 router.get('/stats', verifyToken, isAdmin, getAdminStats);
 router.get('/search-user', verifyToken, isAdmin, searchUserByEmail);
 router.post('/manual-upgrade', verifyToken, isAdmin, manualPlanUpgrade);
+router.post('/send-email', verifyToken, isAdmin, sendEmailToUser);
 
 // Plan routes
 router.get('/plans', verifyToken, isAdmin, getAllPlansAdmin);
@@ -76,5 +79,9 @@ router.post('/parse-legal-doc', verifyToken, isAdmin, upload.single('file'), (re
 router.get('/chat-sessions/stats', verifyToken, isAdmin, getChatSessionStats);
 router.get('/chat-sessions', verifyToken, isAdmin, getChatSessions);
 router.get('/chat-sessions/:sessionId', verifyToken, isAdmin, getChatSessionDetail);
+
+// Analytics
+router.get('/analytics', verifyToken, isAdmin, getAnalytics);
+router.get('/analytics/errors/:mode', verifyToken, isAdmin, getErrorDrillDown);
 
 export default router;

@@ -12,8 +12,7 @@ const UserQuotaSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true,
-        unique: true,  // One document per user; daily fields reset by comparing `date`
-        index: true
+        unique: true  // One document per user; daily fields reset by comparing `date`
     },
 
     // ── DAILY COUNTERS (reset each calendar day) ───────────────────────────────
@@ -31,7 +30,6 @@ const UserQuotaSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-// Index for fast daily-reset lookups
-UserQuotaSchema.index({ userId: 1 });
+
 
 export default mongoose.models.UserQuota || mongoose.model('UserQuota', UserQuotaSchema);

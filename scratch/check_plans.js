@@ -1,23 +1,27 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-dotenv.config();
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import dns from 'dns';
 
-const planSchema = new mongoose.Schema({
-    planName: String,
-    isActive: Boolean
-});
-const Plan = mongoose.model('Plan', planSchema);
+try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {}
 
-async function checkPlans() {
-    try {
-        await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/AISA');
-        const plans = await Plan.find({});
-        console.log('PLANS:', JSON.stringify(plans, null, 2));
-        process.exit(0);
-    } catch (err) {
-        console.error(err);
-        process.exit(1);
-    }
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
+const MONGO_URI = process.env.MONGODB_ATLAS_URI || process.env.MONGO_URI;
+
+async function check() {
+    await mongoose.connect(MONGO_URI);
+    
+    const Plan = (await import('../models/Plan.js')).default;
+    const plans = await Plan.find({}).lean();
+    console.log("PLANS IN DB:");
+    console.log(JSON.stringify(plans, null, 2));
+    
+    await mongoose.disconnect();
 }
 
-checkPlans();
+check().catch(console.error);
