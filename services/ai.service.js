@@ -421,8 +421,8 @@ Maintain any text response outside the JSON block.`;
                 
                 logger.info(`[RAG-Pipeline] ✅ RAG Response Generated Successfully (${ragResponse?.length || 0} chars).`);
                 
-                // Prepend [RAG] indicator to the text so the user knows it's from knowledge base
-                const finalRagText = ragResponse?.startsWith('[RAG]') ? ragResponse : `[RAG] ${ragResponse}`;
+                // Do not prepend [RAG] indicator to the text
+                const finalRagText = ragResponse?.replace(/^\[RAG\]\s*/i, '') || '';
                 
                 finalResponseData = { text: finalRagText, isRealTime: false, sources: ragContext?.sources || [], mode: 'RAG' };
             } else {
