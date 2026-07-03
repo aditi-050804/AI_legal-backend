@@ -460,6 +460,10 @@ const handleSocialUser = async (profile, req, res, isRedirect = true) => {
     console.log(`- clientClaimsLatest: ${clientClaimsLatest} (Req acceptedTerms: ${req.body?.acceptedTerms}, Version: ${reqTermsVersion}/${reqPrivacyVersion})`);
 
     if (!hasAcceptedLatestTerms && !clientClaimsLatest) {
+      if (isRedirect) {
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        return res.redirect(`${frontendUrl}/login?error=TERMS_UPDATE_REQUIRED&provider=${provider.toLowerCase()}`);
+      }
       return res.status(403).json({
         success: false,
         code: "TERMS_UPDATE_REQUIRED",
@@ -890,7 +894,10 @@ router.get("/apple", (req, res) => {
 
   const redirectUri = `${process.env.BACKEND_URL || 'http://localhost:8080'}/api/auth/apple/callback`;
   const scope = 'name email';
-  const state = crypto.randomBytes(16).toString('hex');
+  
+  const { acceptedTerms, termsVersion, privacyVersion } = req.query;
+  const randomHex = crypto.randomBytes(16).toString('hex');
+  const state = `${randomHex}:${acceptedTerms || ''}:${termsVersion || ''}:${privacyVersion || ''}`;
 
   const authorizationUrl = appleSignin.getAuthorizationUrl({
     clientID: clientId,
@@ -906,6 +913,13 @@ router.get("/apple", (req, res) => {
 router.post("/apple/callback", async (req, res) => {
   console.log(`[DEBUG Apple Callback Body]:`, JSON.stringify(req.body));
   const { code, id_token: bodyIdToken, user: userJson, state } = req.body;
+
+  const [, acceptedTerms, termsVersion, privacyVersion] = (state || '').split(':');
+  if (acceptedTerms) {
+    req.body.acceptedTerms = acceptedTerms === 'true';
+    req.body.termsVersion = termsVersion;
+    req.body.privacyVersion = privacyVersion;
+  }
 
   try {
     console.log(`[DEBUG Apple] Apple Callback started. Code: ${code ? 'Present' : 'Missing'}, ID Token: ${bodyIdToken ? 'Present' : 'Missing'}`);
