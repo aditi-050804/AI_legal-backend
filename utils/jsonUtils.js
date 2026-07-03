@@ -16,6 +16,21 @@ export const safeParseLLMJson = (content, fallback = null) => {
     
     let clean = content.replace(/```json\s*|\s*```/g, '').trim();
 
+    // Handle double-stringified JSON (wrapped in quotes)
+    if (clean.startsWith('"') && clean.endsWith('"')) {
+        try {
+            const unwrapped = JSON.parse(clean);
+            if (typeof unwrapped === 'object' && unwrapped !== null) {
+                return unwrapped;
+            }
+            if (typeof unwrapped === 'string') {
+                clean = unwrapped.trim();
+            }
+        } catch (e) {
+            clean = clean.substring(1, clean.length - 1).trim();
+        }
+    }
+
     // 1. Regex-based extraction of outermost {} or []
     const jsonRegex = /({[\s\S]*}|\[[\s\S]*\])/;
     const match = clean.match(jsonRegex);

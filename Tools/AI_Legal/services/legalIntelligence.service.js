@@ -101,7 +101,7 @@ export const analyzeCaseDetails = async (rawText, currentData = {}) => {
         });
 
         const fallback = {
-            executive_summary: `AI Analysis Error: The system could not process the request. It returned: "${response.substring(0, 200)}..."`,
+            executive_summary: "__AI_ANALYSIS_FAILED__",
             case_strength: 0,
             win_probability: 0,
             timeline: [],
@@ -123,7 +123,7 @@ export const analyzeCaseDetails = async (rawText, currentData = {}) => {
         
         // Return fallback instead of throwing to prevent 500 error
         return {
-            executive_summary: `AI Request Failed: ${error.message}`,
+            executive_summary: "__AI_ANALYSIS_FAILED__",
             case_strength: 0,
             win_probability: 0,
             timeline: [],

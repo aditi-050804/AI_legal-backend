@@ -120,7 +120,15 @@ const performCaseAnalysis = async (req, res) => {
             return res.status(404).json({ error: 'Case not found' });
         }
 
-        const inputText = rawText || project.summary || project.name;
+        let inputText = rawText || '';
+        if (!inputText || 
+            inputText.includes("__AI_ANALYSIS_FAILED__") || 
+            inputText.includes("AI Analysis Error") ||
+            inputText.includes("AI Request Failed") ||
+            inputText.includes("could not process the request")) {
+            inputText = project.description || project.name;
+        }
+        
         const aiResponse = await legalIntelligenceService.analyzeCaseDetails(inputText, project);
         
         const aiData = typeof aiResponse === "string" ? JSON.parse(aiResponse) : aiResponse;

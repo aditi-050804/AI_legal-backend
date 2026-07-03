@@ -21,6 +21,27 @@ import * as stockService from './services/stockService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import fs from 'fs';
+const logFile = fs.createWriteStream(path.join(__dirname, 'server_output.log'), { flags: 'a' });
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+console.log = function(...args) {
+  originalLog.apply(console, args);
+  try { logFile.write(`[LOG] ${new Date().toISOString()}: ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}\n`); } catch(e) {}
+};
+
+console.error = function(...args) {
+  originalError.apply(console, args);
+  try { logFile.write(`[ERROR] ${new Date().toISOString()}: ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}\n`); } catch(e) {}
+};
+
+console.warn = function(...args) {
+  originalWarn.apply(console, args);
+  try { logFile.write(`[WARN] ${new Date().toISOString()}: ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}\n`); } catch(e) {}
+};
+
 import chatRoute from './routes/chat.routes.js';
 import knowledgeRoute from './routes/knowledge.routes.js';
 // import aibaseRoutes from './routes/aibaseRoutes.js'; // Removed
@@ -122,6 +143,16 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 // app.use(fileUpload()); // Removed to avoid conflict with Multer (New AIBASE)
 
+// Middleware to ensure UTF-8 charset for all JSON API responses
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function (body) {
+    res.setHeader('Content-Type', 'application/json; charset=UTF-8');
+    return originalJson.call(this, body);
+  };
+  next();
+});
+
 
 // Serve static frontend files from 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
@@ -129,7 +160,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ─── Apple Pay Domain Verification ───────────────────────────────────────────
 // Apple's servers verify your domain by accessing this exact URL
 // File must be placed at: Aisa_backend_beta/public/.well-known/apple-developer-merchantid-domain-association
-import fs from 'fs';
 const serveAppleVerification = (req, res) => {
   let filePath = path.join(__dirname, 'public', '.well-known', 'apple-developer-merchantid-domain-association');
   if (!fs.existsSync(filePath)) {
