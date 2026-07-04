@@ -28,6 +28,12 @@ env_variables:
   GCP_PROJECT_ID: 'ai-mall-484810'
   VIDEO_SERVICE_ACCOUNT: 'video-signer@ai-mall-484810.iam.gserviceaccount.com'
 
+  # --- PayPal ---
+  PAYPAL_MODE: 'live'
+  PAYPAL_INR_TO_USD_RATE: '85'
+  PAYPAL_CLIENT_ID: 'AZZCp26yAI54-xqsLu_1DfWC9IWFocfpPzVWE_fNE8uzBfzgSEpCaV_8T96xC1bK3KCTlb-5RII_bHiA'
+  PAYPAL_CLIENT_SECRET: 'ENX8UljgfKN_-Y9gvfGxMC5F-jghUym350_rnmTPkxjCnJ66HIQdwnMHgcxqNcsIXPg_QxvHHChY3m1j'
+
   # NOTE: All sensitive keys (OPENAI_API_KEY, CLOUDINARY_API_SECRET, JWT_SECRET,
   # MONGODB_ATLAS_URI, RAZORPAY_KEY_SECRET, RESEND_API_KEY, GOOGLE_CLIENT_ID etc.)
   # must be set directly in App Engine Console:

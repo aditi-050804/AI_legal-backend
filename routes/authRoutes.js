@@ -19,6 +19,9 @@ import appleSignin from 'apple-signin-auth';
 const router = express.Router();
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+const CURRENT_TERMS_VERSION = process.env.CURRENT_TERMS_VERSION || 'v1.2';
+const CURRENT_PRIVACY_VERSION = process.env.CURRENT_PRIVACY_VERSION || 'v1.1';
+
 // --- Avatar Helpers moved to utils/avatarHelper.js ---
 
 // --- Proxy Avatar Route ---
@@ -60,7 +63,17 @@ router.get("/signup", (req, res) => {
 // ====================== SIGNUP =======================
 router.post("/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { 
+      name, 
+      email, 
+      password,
+      acceptedTerms,
+      acceptedPrivacy,
+      acceptedCookiePolicy,
+      termsVersion,
+      privacyVersion,
+      cookiePolicyVersion
+    } = req.body;
 
     // DB Down Fallback for Signup
     if (mongoose.connection.readyState !== 1) {
@@ -97,6 +110,8 @@ router.post("/signup", async (req, res) => {
 
     const verificationCode = generateOTP();
 
+    const now = new Date();
+
     // Create user
     const newUser = await UserModel.create({
       name,
@@ -105,6 +120,15 @@ router.post("/signup", async (req, res) => {
       verificationCode,
       credits: 500, // Explicitly set to match README Free Tier
       avatar: await getSmartAvatar(email, name),
+      acceptedTerms: acceptedTerms !== undefined ? acceptedTerms : true,
+      acceptedPrivacy: acceptedPrivacy !== undefined ? acceptedPrivacy : true,
+      acceptedCookiePolicy: acceptedCookiePolicy !== undefined ? acceptedCookiePolicy : true,
+      termsAcceptedAt: now,
+      privacyAcceptedAt: now,
+      cookiePolicyAcceptedAt: now,
+      termsVersion: termsVersion || CURRENT_TERMS_VERSION,
+      privacyVersion: privacyVersion || CURRENT_PRIVACY_VERSION,
+      cookiePolicyVersion: cookiePolicyVersion || '1.0',
       notificationsInbox: [
         {
           id: `welcome_${Date.now()}_1`,
@@ -181,6 +205,35 @@ router.post("/login", async (req, res) => {
     const isCorrect = await bcrypt.compare(password, user.password);
     if (!isCorrect) {
       return res.status(401).json({ error: "Incorrect password" });
+    }
+
+    // Verify Terms Version
+    const reqTermsVersion = req.body?.termsVersion || req.query?.termsVersion;
+    const reqPrivacyVersion = req.body?.privacyVersion || req.query?.privacyVersion;
+
+    const hasAcceptedLatestTerms = user.termsVersion === CURRENT_TERMS_VERSION && user.privacyVersion === CURRENT_PRIVACY_VERSION;
+    const clientClaimsLatest = (req.body?.acceptedTerms || req.query?.acceptedTerms === 'true') && 
+                               reqTermsVersion === CURRENT_TERMS_VERSION && 
+                               reqPrivacyVersion === CURRENT_PRIVACY_VERSION;
+
+    if (!hasAcceptedLatestTerms && !clientClaimsLatest) {
+      return res.status(403).json({
+        success: false,
+        code: "TERMS_UPDATE_REQUIRED",
+        error: "Terms and Conditions or Privacy Policy have been updated. Please accept the new terms to continue.",
+        currentTermsVersion: CURRENT_TERMS_VERSION,
+        currentPrivacyVersion: CURRENT_PRIVACY_VERSION
+      });
+    }
+
+    if (clientClaimsLatest && !hasAcceptedLatestTerms) {
+      user.termsVersion = CURRENT_TERMS_VERSION;
+      user.privacyVersion = CURRENT_PRIVACY_VERSION;
+      user.acceptedTerms = true;
+      user.acceptedPrivacy = true;
+      user.termsAcceptedAt = new Date();
+      user.privacyAcceptedAt = new Date();
+      await user.save();
     }
 
     // Remove normalisePlan
@@ -263,6 +316,7 @@ router.post("/login", async (req, res) => {
  * Common handler to find or create a user after any social authentication
  */
 const handleSocialUser = async (profile, req, res, isRedirect = true) => {
+  console.log("[Backend handleSocialUser Debug] req.body:", JSON.stringify(req.body, null, 2));
   const { email, name, picture, provider, providerId } = profile;
 
   if (!email) {
@@ -317,7 +371,32 @@ const handleSocialUser = async (profile, req, res, isRedirect = true) => {
         await user.save();
       } else {
         // 3. Create new user
+        // Verify that they accepted the terms and conditions and privacy policy first!
+        const reqTermsVersion = req.body?.termsVersion || req.query?.termsVersion;
+        const reqPrivacyVersion = req.body?.privacyVersion || req.query?.privacyVersion;
+
+        const clientClaimsLatest = (req.body?.acceptedTerms || req.query?.acceptedTerms === 'true' || req.body?.acceptedTerms === true) && 
+                                   (req.body?.acceptedPrivacy || req.query?.acceptedPrivacy === 'true' || req.body?.acceptedPrivacy === true) &&
+                                   reqTermsVersion === CURRENT_TERMS_VERSION && 
+                                   reqPrivacyVersion === CURRENT_PRIVACY_VERSION;
+
+        if (!clientClaimsLatest) {
+          console.log(`[Social Auth] Blocked new user creation: Terms acceptance required for ${email}`);
+          return res.status(403).json({
+            success: false,
+            code: "TERMS_UPDATE_REQUIRED",
+            error: "Terms and Conditions and Privacy Policy must be accepted to create an account.",
+            currentTermsVersion: CURRENT_TERMS_VERSION,
+            currentPrivacyVersion: CURRENT_PRIVACY_VERSION
+          });
+        }
+
         console.log(`[Social Auth] Creating new user via ${provider.toUpperCase()}: ${email}`);
+        const now = new Date();
+        const clientAcceptedTerms = true;
+        const clientAcceptedPrivacy = true;
+        const clientAcceptedCookiePolicy = true;
+
         user = await UserModel.create({
           name: name || `${provider} User`,
           email: email,
@@ -328,13 +407,22 @@ const handleSocialUser = async (profile, req, res, isRedirect = true) => {
           provider: provider.toLowerCase(),
           providerId: providerId,
           socialLinks: [{ provider, providerId }],
+          acceptedTerms: clientAcceptedTerms,
+          acceptedPrivacy: clientAcceptedPrivacy,
+          acceptedCookiePolicy: clientAcceptedCookiePolicy,
+          termsAcceptedAt: now,
+          privacyAcceptedAt: now,
+          cookiePolicyAcceptedAt: now,
+          termsVersion: req.body?.termsVersion || req.query?.termsVersion || CURRENT_TERMS_VERSION,
+          privacyVersion: req.body?.privacyVersion || req.query?.privacyVersion || CURRENT_PRIVACY_VERSION,
+          cookiePolicyVersion: req.body?.cookiePolicyVersion || req.query?.cookiePolicyVersion || '1.0',
           notificationsInbox: [
             {
               id: `welcome_${Date.now()}`,
               title: `Welcome to AISA via ${provider}!`,
               desc: 'Your account has been successfully created. Explore our AI features!',
               type: 'update',
-              time: new Date()
+              time: now
             }
           ]
         });
@@ -356,6 +444,43 @@ const handleSocialUser = async (profile, req, res, isRedirect = true) => {
         // Send welcome email asynchronously
         welcomeEmail(user.name, user.email).catch(err => console.error("Social welcome email error:", err));
       }
+    }
+
+    // Verify Terms Version
+    const reqTermsVersion = req.body?.termsVersion || req.query?.termsVersion;
+    const reqPrivacyVersion = req.body?.privacyVersion || req.query?.privacyVersion;
+
+    const hasAcceptedLatestTerms = user.termsVersion === CURRENT_TERMS_VERSION && user.privacyVersion === CURRENT_PRIVACY_VERSION;
+    const clientClaimsLatest = (req.body?.acceptedTerms || req.query?.acceptedTerms === 'true') && 
+                               reqTermsVersion === CURRENT_TERMS_VERSION && 
+                               reqPrivacyVersion === CURRENT_PRIVACY_VERSION;
+
+    console.log(`[Social Auth Terms Check Debug] Email: ${user.email}`);
+    console.log(`- hasAcceptedLatestTerms: ${hasAcceptedLatestTerms} (User: ${user.termsVersion}/${user.privacyVersion}, Current: ${CURRENT_TERMS_VERSION}/${CURRENT_PRIVACY_VERSION})`);
+    console.log(`- clientClaimsLatest: ${clientClaimsLatest} (Req acceptedTerms: ${req.body?.acceptedTerms}, Version: ${reqTermsVersion}/${reqPrivacyVersion})`);
+
+    if (!hasAcceptedLatestTerms && !clientClaimsLatest) {
+      if (isRedirect) {
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+        return res.redirect(`${frontendUrl}/login?error=TERMS_UPDATE_REQUIRED&provider=${provider.toLowerCase()}`);
+      }
+      return res.status(403).json({
+        success: false,
+        code: "TERMS_UPDATE_REQUIRED",
+        error: "Terms and Conditions or Privacy Policy have been updated. Please accept the new terms to continue.",
+        currentTermsVersion: CURRENT_TERMS_VERSION,
+        currentPrivacyVersion: CURRENT_PRIVACY_VERSION
+      });
+    }
+
+    if (clientClaimsLatest && !hasAcceptedLatestTerms) {
+      user.termsVersion = CURRENT_TERMS_VERSION;
+      user.privacyVersion = CURRENT_PRIVACY_VERSION;
+      user.acceptedTerms = true;
+      user.acceptedPrivacy = true;
+      user.termsAcceptedAt = new Date();
+      user.privacyAcceptedAt = new Date();
+      await user.save();
     }
 
     // Generate JWT
@@ -646,6 +771,7 @@ router.get("/google", async (req, res) => {
 // POST /google — called by frontend after @react-oauth/google returns an access token
 router.post("/google", async (req, res) => {
   try {
+    console.log("[Backend POST /google Debug] req.body:", JSON.stringify(req.body, null, 2));
     const { credential, email: bodyEmail, name: bodyName, picture: bodyPicture } = req.body;
 
     if (!credential) {
@@ -768,7 +894,10 @@ router.get("/apple", (req, res) => {
 
   const redirectUri = `${process.env.BACKEND_URL || 'http://localhost:8080'}/api/auth/apple/callback`;
   const scope = 'name email';
-  const state = crypto.randomBytes(16).toString('hex');
+  
+  const { acceptedTerms, termsVersion, privacyVersion } = req.query;
+  const randomHex = crypto.randomBytes(16).toString('hex');
+  const state = `${randomHex}:${acceptedTerms || ''}:${termsVersion || ''}:${privacyVersion || ''}`;
 
   const authorizationUrl = appleSignin.getAuthorizationUrl({
     clientID: clientId,
@@ -784,6 +913,13 @@ router.get("/apple", (req, res) => {
 router.post("/apple/callback", async (req, res) => {
   console.log(`[DEBUG Apple Callback Body]:`, JSON.stringify(req.body));
   const { code, id_token: bodyIdToken, user: userJson, state } = req.body;
+
+  const [, acceptedTerms, termsVersion, privacyVersion] = (state || '').split(':');
+  if (acceptedTerms) {
+    req.body.acceptedTerms = acceptedTerms === 'true';
+    req.body.termsVersion = termsVersion;
+    req.body.privacyVersion = privacyVersion;
+  }
 
   try {
     console.log(`[DEBUG Apple] Apple Callback started. Code: ${code ? 'Present' : 'Missing'}, ID Token: ${bodyIdToken ? 'Present' : 'Missing'}`);

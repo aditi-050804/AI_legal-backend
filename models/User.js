@@ -160,7 +160,16 @@ const userSchema = new mongoose.Schema({
     blockedUsers: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
-    }]
+    }],
+    acceptedTerms: { type: Boolean, default: false },
+    acceptedPrivacy: { type: Boolean, default: false },
+    acceptedCookiePolicy: { type: Boolean, default: false },
+    termsAcceptedAt: { type: Date },
+    privacyAcceptedAt: { type: Date },
+    cookiePolicyAcceptedAt: { type: Date },
+    termsVersion: { type: String, default: '1.0' },
+    privacyVersion: { type: String, default: '1.0' },
+    cookiePolicyVersion: { type: String, default: '1.0' }
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

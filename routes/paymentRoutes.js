@@ -3,6 +3,7 @@ import { getPaymentHistory, createOrder, verifyPayment } from '../controllers/pa
 import { createApplePayOrder, validateAppleMerchant, verifyApplePayment } from '../controllers/applePayController.js';
 import { verifyGooglePlaySubscription } from '../controllers/googlePlayController.js';
 import { verifyAppleStoreSubscription } from '../controllers/appleStoreController.js';
+import { createPaypalOrder, capturePaypalOrder } from '../controllers/paypalController.js';
 import { verifyToken } from '../middleware/authorization.js';
 
 const router = express.Router();
@@ -25,5 +26,11 @@ router.post('/apple-pay/create-order', verifyToken, createApplePayOrder);
 router.post('/apple-pay/validate-merchant', verifyToken, validateAppleMerchant);
 // Step 3: Verify payment + activate plan
 router.post('/apple-pay/verify', verifyToken, verifyApplePayment);
+
+// ─── PayPal Routes ────────────────────────────────────────────────────────────
+// Step 1: Create PayPal order (returns orderID to frontend)
+router.post('/paypal/create-order', verifyToken, createPaypalOrder);
+// Step 2: Capture PayPal order + verify + activate plan
+router.post('/paypal/capture', verifyToken, capturePaypalOrder);
 
 export default router;
