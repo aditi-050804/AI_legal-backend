@@ -76,12 +76,26 @@ const chatSessionSchema = new mongoose.Schema({
   detectedMode: { type: String, default: 'NORMAL_CHAT' },
   activeTool: { type: String, required: false }, // Stores specific legal tool (e.g. legal_draft_maker)
   isShared: { type: Boolean, default: false },
-  shareId: { type: String, unique: true, sparse: true, index: true }
+  shareId: { type: String, unique: true, sparse: true, index: true },
+  // ─── AI DUAL ARCHITECTURE: General Chat vs Case Assistant ─────────────────
+  sessionType: {
+    type: String,
+    enum: ['GENERAL', 'CASE'],
+    default: 'GENERAL',
+    index: true
+  },
+  caseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+    required: false,
+    index: true
+  }
 }, { timestamps: true });
 
 chatSessionSchema.index({ userId: 1, lastModified: -1 });
 chatSessionSchema.index({ guestId: 1, lastModified: -1 });
 chatSessionSchema.index({ projectId: 1, lastModified: -1 });
+chatSessionSchema.index({ caseId: 1, sessionType: 1, lastModified: -1 }); // Case Assistant compound index
 
 const ChatSession = mongoose.model('ChatSession', chatSessionSchema);
 export default ChatSession

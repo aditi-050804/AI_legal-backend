@@ -399,11 +399,17 @@ router.post("/", optionalVerifyToken, identifyGuest, async (req, res) => {
     if (!session) {
       const words = (content || "").trim().split(/\s+/);
       const aiTitle = words.slice(0, 5).join(' ') + (words.length > 5 ? '...' : '') || "New Chat";
+      // ── Dual AI Architecture: tag each session as GENERAL or CASE ──────────
+      const sessionTypeTag = req.body.sessionType === 'CASE' ? 'CASE' : 'GENERAL';
+      const caseIdValue = req.body.caseId || (sessionTypeTag === 'CASE' ? (req.body.projectId || null) : null);
+      // ───────────────────────────────────────────────────────────────────────
       session = new ChatSession({
         sessionId: sessionId || `temp_${Date.now()}`,
         userId: userId || null,
         guestId: req.guest?.guestId || null,
         projectId: (req.body.projectId === 'default' || req.body.projectId === 'all') ? null : (req.body.projectId || null),
+        caseId: caseIdValue ? caseIdValue : null,
+        sessionType: sessionTypeTag,
         title: aiTitle || "New Chat",
         detectedMode: detectedMode || 'NORMAL_CHAT',
         activeTool: req.body.activeTool || null,
@@ -487,22 +493,49 @@ router.get('/', optionalVerifyToken, identifyGuest, async (req, res) => {
 
     let sessions = [];
     const projectId = req.query.projectId;
+    const sessionType = req.query.sessionType; // 'GENERAL' or 'CASE'
+    const caseId = req.query.caseId; // case-specific filter for Case Assistant
 
     if (userId) {
       const query = { userId: userId };
-      if (projectId && projectId !== 'null' && projectId !== 'undefined' && projectId !== 'default' && projectId !== 'all') {
+
+      // ── DUAL AI ARCHITECTURE: filter by sessionType ──────────────────────
+      if (sessionType === 'CASE' && (caseId || projectId)) {
+        // Case Assistant: only conversations belonging to this specific case
+        const resolvedCaseId = caseId || projectId;
+        query.$or = [
+          { caseId: resolvedCaseId },
+          { projectId: resolvedCaseId }
+        ];
+        query.sessionType = 'CASE';
+      } else if (sessionType === 'GENERAL') {
+        // General AI Chat: only sessions with no case/project linkage
+        query.sessionType = 'GENERAL';
+        query.projectId = { $in: [null, undefined] };
+        query.caseId = { $in: [null, undefined] };
+      } else if (projectId && projectId !== 'null' && projectId !== 'undefined' && projectId !== 'default' && projectId !== 'all') {
+        // Legacy: projectId-based filtering (backwards compat)
         query.projectId = projectId;
       } else {
-        // If no projectId or 'null', return chats where projectId is null or doesn't exist
+        // Default: return all general sessions (no projectId/caseId)
         query.projectId = { $in: [null, undefined] };
       }
+      // ─────────────────────────────────────────────────────────────────────
 
       sessions = await ChatSession.find(query)
-        .select('sessionId title lastModified userId projectId activeTool detectedMode')
+        .select('sessionId title lastModified userId projectId caseId sessionType activeTool detectedMode')
         .sort({ lastModified: -1 });
     } else if (guestId) {
-      sessions = await ChatSession.find({ guestId: guestId })
-        .select('sessionId title lastModified guestId activeTool detectedMode')
+      const guestQuery = { guestId: guestId };
+      if (sessionType === 'CASE' && (caseId || projectId)) {
+        const resolvedCaseId = caseId || projectId;
+        guestQuery.$or = [{ caseId: resolvedCaseId }, { projectId: resolvedCaseId }];
+        guestQuery.sessionType = 'CASE';
+      } else if (sessionType === 'GENERAL') {
+        guestQuery.sessionType = 'GENERAL';
+      }
+      sessions = await ChatSession.find(guestQuery)
+        .select('sessionId title lastModified guestId caseId sessionType activeTool detectedMode')
         .sort({ lastModified: -1 });
     }
     res.json(sessions);
